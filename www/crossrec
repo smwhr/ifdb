@@ -1,6 +1,6 @@
 <?php
 
-@session_start();
+include_once "session-start.php";
 
 // connect to the database
 include_once "dbconnect.php";
@@ -13,7 +13,6 @@ $curuser = checkPersistentLogin();
 
 include "pagetpl.php";
 include_once "util.php";
-include "plugin-detect.php";
 include "starctl.php";
 
 // get the parameters
@@ -556,8 +555,8 @@ if ($editMode) {
         if ($toArt) {
             echo "<td style=\"padding-right: 2em; width: 80px;\">"
                 . "<a href=\"viewgame?id=$toID\">"
-                . "<img border=0 src=\"viewgame?id=$toID&coverart"
-                . "&thumbnail=80x80\">(toArt=$toArt)</a></td>";
+                . coverArtThumbnail($toID, 80)
+                . "(toArt=$toArt)</a></td>";
         } else {
             echo "<td style=\"width: 1px;\"></td>";
         }

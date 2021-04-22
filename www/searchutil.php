@@ -200,29 +200,44 @@ function doSearch($db, $term, $searchType, $sortby, $limit, $browse)
         $likeCol = "c.title";
         $summaryDesc = "Competitions";
     }
+    else if ($searchType == "tag")
+    {
+        // special keywords for tag search
+        $specialMap = array(
+            "tag:" => array("tag", 0));        
+        
+        $selectList = "gt.tag as tag";
+        $tableList = "gametags as gt";
+        $groupBy = "group by gt.tag";
+        $baseOrderBy = "gt.tag";
+        $matchCols = "gt.tag";
+        $likeCol = "gt.tag";
+        $summaryDesc = "Tags";
+    }
     else
     {
         // special keywords for game search:  "keyword:" => descriptor
         $specialMap = array(
             "genre:" => array("genre", 0),
             "published:" => array("date_format(published, '%Y')", 1),
+            "added:" => array("date_format(created, '%Y')", 1),
             "system:" => array("system", 0),
             "series:" => array("seriesname", 0),
             "tag:" => array("tags", 3),
             "bafs:" => array("bafsid", 2),
-            "rating:" => array("avg(reviews.rating)", 1, true),
-            "#reviews:" => array(
-                "count(if(reviews.special is null,reviews.review,null))",
-                1, true),
-            "ratingdev:" => array(
-                "stddev(if(reviews.RFlags & " . RFLAG_OMIT_AVG
-                .          ", null, reviews.rating))", 1, true),
-            "#ratings:" => array("count(reviews.rating)", 1, true),
+            "rating:" => array("avgRating", 1, true),
+            "#reviews:" => array("numMemberReviews",1, true),
+            "ratingdev:" => array("stdDevRating", 1, true),
+            "#ratings:" => array("numRatingsTotal", 1, true),
             "forgiveness:" => array("forgiveness", 0),
             "language:" => array("language", 99),
             "author:" => array("author", 99),
+            "authorid:" => array("authorid", 99),
             "ifid:" => array("/ifid/", 99),
             "downloadable:" => array("/downloadable/", 99),
+            "played:" => array("played", 99),
+            "willplay:" => array("willplay", 99),
+            "wontplay:" => array("wontplay", 99),
             "license:" => array("license", 0),
             "format:" => array("/gameformat/", 99));
                 
@@ -244,25 +259,18 @@ function doSearch($db, $term, $searchType, $sortby, $limit, $browse)
                          as published,
                        date_format(games.published, '%Y') as pubyear,
                        (games.coverart is not null) as hasart,
-                       avg(if(reviews.RFlags & " . RFLAG_OMIT_AVG . ",
-                              null, reviews.rating))
-                         as avgrating,
-                       count(if(reviews.RFlags & " . RFLAG_OMIT_AVG . ",
-                                null, reviews.rating))
-                         as ratingcnt,
-                       stddev(if(reviews.RFlags & " . RFLAG_OMIT_AVG . ",
-                                 null, reviews.rating))
-                         as ratingdev,
+                       avgRating as avgrating,
+                       numRatingsInAvg as ratingcnt,
+                       stdDevRating as ratingdev,
+                       numRatingsTotal,
+                       numMemberReviews,
                        games.sort_title as sort_title,
                        games.sort_author as sort_author,
-                       ifnull(games.published, '9999-12-31') as sort_pub";
+                       ifnull(games.published, '9999-12-31') as sort_pub,
+                       games.flags";
         $tableList = "games
-                      left outer join reviews
-                        on reviews.gameid = games.id
-                          and ifnull(now() >= reviews.embargodate, 1)
-                      left outer join users as reviewuser
-                        on reviewuser.id = reviews.userid";
-        $baseWhere = "and ifnull(reviewuser.sandbox, 0) in $sandbox ";
+                      left join ".getGameRatingsView($db)." on games.id = gameid";
+        $baseWhere = "";
         $groupBy = "group by games.id";
         $baseOrderBy = "sort_title";
         $matchCols = "title, author, `desc`, tags";
@@ -526,6 +534,67 @@ function doSearch($db, $term, $searchType, $sortby, $limit, $browse)
                 $op = (preg_match("/^y.*/i", $txt) ? "!=" : "=");
                 $expr = "gls.numGameLinks $op 0";
                 break;
+ 
+            case 'authorid':
+                // need to join the gameprofilelinks table to do this query
+                if (!isset($extraJoins[$col])) {
+                    $extraJoins[$col] = true;
+                    $tableList .= " inner join gameprofilelinks as gpl "
+                                  . "on gpl.gameid = games.id "
+                                  . "and gpl.userid = '$txt'";
+                }
+                break;
+
+            case 'played':
+                // Only use this query when the user is logged in
+                if ($curuser) {
+                    // need to join the playedgames table to do this query
+                    if (!isset($extraJoins[$col])) {
+                        $extraJoins[$col] = true;
+                        $tableList .= " left join playedgames as pg "
+                                      . "on games.id = pg.gameid "
+                                      . "and pg.userid = '$curuser'";
+                    }
+
+                    // we need yes=not-null/no=null game ids
+                    $op = (preg_match("/^y.*/i", $txt) ? "is not" : "is");
+                    $expr = "pg.gameid $op null";  
+                }
+                break;
+
+            case 'willplay':
+                // Only use this query when the user is logged in
+                if ($curuser) {
+                    // need to join the wishlists table to do this query
+                    if (!isset($extraJoins[$col])) {
+                        $extraJoins[$col] = true;
+                        $tableList .= " left join wishlists as wl "
+                                      . "on games.id = wl.gameid "
+                                      . "and wl.userid = '$curuser'";
+                    }
+
+                    // we need yes=not-null/no=null game ids
+                    $op = (preg_match("/^y.*/i", $txt) ? "is not" : "is");
+                    $expr = "wl.gameid $op null";  
+                }
+                break;
+
+            case 'wontplay':
+                // Only use this query when the user is logged in
+                if ($curuser) {
+                    // need to join the unwishlists table to do this query
+                    if (!isset($extraJoins[$col])) {
+                        $extraJoins[$col] = true;
+                        $tableList .= " left join unwishlists as ul "
+                                      . "on games.id = ul.gameid "
+                                      . "and ul.userid = '$curuser'";
+                    }
+
+                    // we need yes=not-null/no=null game ids
+                    $op = (preg_match("/^y.*/i", $txt) ? "is not" : "is");
+                    $expr = "ul.gameid $op null";  
+                }
+                break;
 
             case 'author':
                 // get the names in sorting format
@@ -703,40 +772,46 @@ function doSearch($db, $term, $searchType, $sortby, $limit, $browse)
     case "game":
         if ($browse) {
             $sortList = array(
+                'ratu' => array('starsort desc,',
+                                'Highest Rated First'),
+                'ratd' => array('starsort,',
+                                'Lowest Rated First'),
                 'lnew' => array('games.created desc,', 'Newest Listing First'),
                 'lold' => array('games.created,', 'Oldest Listing First'),
-                'ratu' => array('avgrating desc, ratingcnt desc,',
-                                'Highest Rated First'),
-                'ratd' => array('avgrating, ratingcnt desc,',
-                                'Lowest Rated First'),
-                'rcu' => array('ratingcnt desc, avgrating desc,',
+                'rcu' => array('ratingcnt desc, starsort desc,',
                                'Most Ratings First'),
-                'rcd' => array('ratingcnt, avgrating desc,',
+                'rcd' => array('ratingcnt, starsort desc,',
                                'Fewest Ratings First'),
                 'ttl' => array('sort_title,', 'Sort by Title'),
                 'auth' => array('sort_author,', 'Sort by Author'),
                 'pnew' => array('published desc,', 'Latest Publication First'),
                 'pold' => array('sort_pub,', 'Earliest Publication First'),
                 'rand' => array('rand(),', 'Random Order'));
-            $defSortBy = 'lnew';
+            $defSortBy = 'ratu';
         } else {
             $sortList = array(
+                'ratu' => array('starsort desc,', 'Highest Rated First'),
+                'ratd' => array('starsort,', 'Lowest Rated First'),
+                'lnew' => array('games.created desc,', 'Newest Listing First'),
+                'lold' => array('games.created,', 'Oldest Listing First'),
                 'ttl' => array('sort_title,', 'Sort by Title'),
                 'auth' => array('sort_author,', 'Sort by Author'),
-                'ratu' => array('avgrating desc,', 'Highest Rated First'),
-                'ratd' => array('avgrating,', 'Lowest Rated First'),
-                'rcu' => array('ratingcnt desc, avgrating desc,',
+                'rcu' => array('ratingcnt desc, starsort desc,',
                                'Most Ratings First'),
-                'rcd' => array('ratingcnt, avgrating desc,',
+                'rcd' => array('ratingcnt, starsort desc,',
                                'Fewest Ratings First'),
-                'rsdu' => array('ratingdev desc, avgrating desc, ratingcnt desc,',
+                'rsdu' => array('ratingdev desc, starsort desc,',
                                 'Rating Deviation - High to Low'),
-                'rsdd' => array('ratingdev, avgrating desc, ratingcnt desc,',
+                'rsdd' => array('ratingdev, starsort desc,',
                                 'Rating Deviation - Low to High'),
                 'new' => array('published desc,', 'Latest Publication First'),
                 'old' => array('sort_pub,', 'Earliest Publication First'),
                 'rand' => array('rand(),', 'Random Order'));
-            $defSortBy = 'rel';
+            if (count($words)) {
+                $defSortBy = 'rel';
+            } else {
+                $defSortBy = 'ratu';
+            }
         }
 
         if (!isset($specialsUsed['ratingdev:'])) {
@@ -747,20 +822,20 @@ function doSearch($db, $term, $searchType, $sortby, $limit, $browse)
 
     case "list":
         $sortList = array(
-            'ttl' => array('title,', 'Sort by List Title'),
-            'usr' => array('username,', 'Sort by List Author'),
             'new' => array('moddate desc,', 'Newest First'),
             'old' => array('moddate,', 'Oldest First'),
+            'ttl' => array('title,', 'Sort by List Title'),
+            'usr' => array('username,', 'Sort by List Author'),
             'rand' => array('rand(),', 'Random Order'));
-        $defSortBy = 'ttl';
+        $defSortBy = 'new';
         break;
 
     case "poll":
         $sortList = array(
-            'ttl' => array('title,', 'Sort by Poll Title'),
-            'usr' => array('username,', 'Sort by Poll Author'),
             'new' => array('p.created desc,', 'Newest First'),
             'old' => array('p.created,', 'Oldest First'),
+            'ttl' => array('title,', 'Sort by Poll Title'),
+            'usr' => array('username,', 'Sort by Poll Author'),
             'newvote' => array('votedate desc,', 'Latest Vote First'),
             'oldvote' => array('votedate,', 'Longest Since Last Vote First'),
             'votes' => array('votecnt desc,', 'Most Votes First'),
@@ -768,7 +843,7 @@ function doSearch($db, $term, $searchType, $sortby, $limit, $browse)
             'games' => array('gamecnt desc,', 'Most Games First'),
             'gamesd' => array('gamecnt,', 'Least Games First'),
             'rand' => array('rand(),', 'Random Order'));
-        $defSortBy = 'ttl';
+        $defSortBy = 'new';
         break;
 
     case "member":
@@ -787,7 +862,7 @@ function doSearch($db, $term, $searchType, $sortby, $limit, $browse)
 
     case "comp":
         $sortList = array(
-            'awn' => array('c.awarddate desc,', 'Most Recent First'),
+            'awn' => array('c.awarddate desc,', 'Newest First'),
             'awo' => array('c.awarddate,', 'Oldest First'),
             'nm' => array('lower(c.title),', 'Sort by Name'),
             'numgd' => array('count(g.gameid) desc,', 'Most Entries First'),
@@ -799,12 +874,19 @@ function doSearch($db, $term, $searchType, $sortby, $limit, $browse)
 
     case "club":
         $sortList = array(
-            'name' => array('c.name,', 'Sort by Name'),
             'new' => array('c.created desc,', 'Newest First'),
             'old' => array('c.created,', 'Oldest First'),
+            'name' => array('c.name,', 'Sort by Name'),
             'mcd' => array('membercnt desc,', 'Most Members First'),
             'mcu' => array('membercnt,', 'Fewest Members First'),
             'con' => array('lower(c.contacts),', 'Sort by Contact Name'),
+            'rand' => array('rand(),', 'Random Order'));
+        $defSortBy = 'new';
+        break;
+
+    case "tag":
+        $sortList = array(
+            'name' => array('gt.tag,', 'Sort by Tag Name'),
             'rand' => array('rand(),', 'Random Order'));
         $defSortBy = 'name';
         break;
@@ -814,8 +896,8 @@ function doSearch($db, $term, $searchType, $sortby, $limit, $browse)
         break;
     }
 
-    // add Relevance as a sort option if doing a search
-    if (!$browse) {
+    // add Relevance as a sort option if doing a search with terms
+    if (!$browse && count($words)) {
         $sortList = array('rel' => array('', 'Sort by Relevance'))
                     + $sortList;
         $defSortBy = 'rel';

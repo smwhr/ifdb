@@ -27,7 +27,7 @@ function mysql_insert_id($linkid) { return mysqli_insert_id($linkid); }
 define("MYSQL_ASSOC", MYSQLI_ASSOC);
 define("MYSQL_BOTH",  MYSQLI_BOTH);
 
-define("PRODUCTION_SERVER_NAME", "ifdb.tads.org");
+define("PRODUCTION_SERVER_NAME", "ifdb.org");
 define("STAGING_SERVER_NAME", "dev.ifdb.org");
 
 // --------------------------------------------------------------------------
@@ -55,6 +55,10 @@ define("RFLAG_OMIT_AVG",     0x0002);
 define("GAMELINK_IS_GAME",  0x0001);
 define("GAMELINK_PENDING",  0x0002);
 
+// --------------------------------------------------------------------------
+// GAMES table FLAGS column bit values
+//
+define("FLAG_SHOULD_HIDE", 0x0001);
 
 // --------------------------------------------------------------------------
 // shoot the recommendation cache
@@ -195,16 +199,16 @@ function browser_os_detect()
 }
 
 // --------------------------------------------------------------------------
-// are we on an iPod or iPhone?
+// are we on an iPhone or Android device?
 //
-function is_ipod_or_iphone()
+function is_mobile()
 {
     // get the browser ID string
     $b = $_SERVER['HTTP_USER_AGENT'];
 
     // check for the relevant strings
     return preg_match(
-        "/^Mozilla\/[0-9.]+ \((iPhone|iPod|iPhone Simulator);/",
+        "/^Mozilla\/[0-9.]+ \((iPhone;|iPod;|iPhone Simulator;|Linux; Android)/",
         $b, $match, 0, 0);
 }
 
@@ -413,19 +417,6 @@ function echoStylesheetLink()
             list($ssid, $ssauthor) = mysql_fetch_row($result);
     }
 
-    // failing that, check to see if we're on an iPod or iPhone - if so,
-    // use the special default style sheet for those devices
-    if (!$ssid && is_ipod_or_iphone()) {
-        // the iPod/iPhone style sheet has ID=6 - it's really an ordinary
-        // style sheet, created by Craig Smith (craig@ni.com), but it's
-        // distinguished as the default style sheet for these devices
-        $result = mysql_query(
-            "select stylesheetid, userid from stylesheets
-             where stylesheetid = '6'", $db);
-        if (mysql_num_rows($result) > 0)
-            list($ssid, $ssauthor) = mysql_fetch_row($result);
-    }
-
     // check for a temporary CSS override
     if ($cssOverride) {
         $db = dbConnect();
@@ -436,14 +427,16 @@ function echoStylesheetLink()
         $ssauthor = mysql_result($result, 0, "userid");
     }
 
-    // If we found a custom style sheet selection, use it; otherwise use
-    // the default style sheet.
+    // If we found a custom style sheet selection, use it;
     if ($ssid)
         echo "<link rel=\"stylesheet\"
                href=\"/users/$ssauthor/css/$ssid.css\">";
+    // otherwise, use the mobile stylesheet if we're on mobile
+    else if (is_mobile())
+        echo "<link rel=\"stylesheet\" href=\"/legacy-mobile-styles.css?v=1\">";
+    // or the regular stylesheet if we're not
     else
-        echo "<link rel=\"stylesheet\" href=\"/ifdb.css\">";
-//        echo "<link rel=\"stylesheet\" href=\"/ifdb-default.css\">";
+        echo "<link rel=\"stylesheet\" href=\"/ifdb.css?v=1\">";
 }
 
 // --------------------------------------------------------------------------
@@ -865,8 +858,8 @@ function showSortingControls($formName, $dropName, $sortMap, $curSortBy,
     echo "</select>";
 
     // add the GO button
-    echo " <input type=image src=\"/blank.gif\" name=\"newSortBy\"
-            class=\"go-button\" id=\"sort-go-button-$idSerial\">";
+    echo " <button src=\"/blank.gif\"
+            class=\"go-button\" id=\"sort-go-button-$idSerial\"></button>";
 
     // consume the serial number
     $idSerial += 1;
@@ -1230,7 +1223,7 @@ function fixDesc($desc, $specials = 0)
                         // open tag.
                         if (in_array($tagName, $tagStack)) {
                             // close tags until we match up with the open
-                            while ($tagSp > 0) {
+                            while ($tagSp >= 0) {
                                 // pop the current tag
                                 $curTag = $tagStack[$tagSp--];
 
@@ -3083,15 +3076,16 @@ function send_admin_email_if_links($txt, $context, $contextLink)
 }
 
 function send_mail($to, $subject, $message, $additional_headers) {
+    $wrapped = wordwrap($message, 78, "\r\n");
     if (isLocalDev()) {
         error_log("EMAIL: NOT SENDING EMAIL IN LOCAL DEVELOPMENT MODE");
         error_log("To: $to");
         error_log("Subject: $subject");
         error_log(print_r($additional_headers, true));
-        error_log($message);
+        error_log($wrapped);
         return true;
     } else {
-        return mail($to, $subject, $message, $additional_headers);
+        return mail($to, $subject, $wrapped, $additional_headers);
     }
 }
 
@@ -3116,5 +3110,27 @@ function get_root_url() {
         return (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]/";
     }
 }
+
+// --------------------------------------------------------------------------
+//
+// Checks if the userid is an admin
+//
+function check_admin_privileges($db, $userid) {
+	
+	$result = mysql_query("select privileges from users where id='$userid' and privileges='A'", $db);
+	if (mysql_num_rows($result)) return true;
+	
+	return false;
+    
+}
+
+function coverArtThumbnail($id, $size, $params = "") {
+    $thumbnail = "/viewgame?id=$id&coverart&thumbnail=";
+    $x15 = round($size * 3 / 2);
+    $x2 = $size * 2;
+    $x3 = $size * 3;
+    return "<img srcset=\"$thumbnail{$size}x$size$params, $thumbnail{$x15}x$x15$params 1.5x, $thumbnail{$x2}x$x2$params 2x, $thumbnail{$x3}x$x3$params 3x\" src=\"/viewgame?id=$id&coverart&thumbnail={$size}x$size\" height=$size width=$size border=0 alt=\"\">";
+}
+
 
 ?>

@@ -1,6 +1,6 @@
 <?php
 
-@session_start();
+include_once "session-start.php";
 include "login-check.php";
 
 include "pagetpl.php";
@@ -838,6 +838,10 @@ if ($id == 'new') {
     pageHeader("Create a New Poll", "newPollForm.title");
 ?>
 
+<div class="tipbox"><h1>Ask a question</h1>
+If you have a question about IF, you can
+<a href="https://intfiction.org">ask at the IF Community Forum</a>.</div>
+
 <h1>Create a New Poll</h1>
 <p>Are you looking for recommendations for a particular type of IF
 to play?  Ask the IFDB community for ideas by creating a public poll.
@@ -977,7 +981,7 @@ engine to match.
             $quickQuote = rss_encode(htmlspecialcharx($quickQuote));
             $notes = rss_encode(htmlspecialcharx($notes));
             $voteDate = rss_encode(
-                date("D, j M Y H:i:s e", strtotime($voteDate)));
+                date("D, j M Y H:i:s ", strtotime($voteDate))) . 'UT';
 
             echo "<item>\r\n"
                 . "<title>$gameTitle"
@@ -1237,8 +1241,8 @@ function expandVote(id)
                 if ($coverArt) {
                     echo "<td style=\"padding-right: 2em; width: 80px;\">"
                         . "<a href=\"viewgame?id=$gameID\">"
-                        . "<img border=0 src=\"viewgame?id=$gameID&coverart"
-                        . "&thumbnail=80x80\"></a></td>";
+                        . coverArtThumbnail($gameID, 80)
+                        . "</a></td>";
                 } else {
                     echo "<td style=\"width: 1px;\"></td>";
                 }

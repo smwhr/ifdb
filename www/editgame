@@ -9,7 +9,7 @@ include_once "gamesearchpopup.php";
 include_once "searchutil.php";
 include_once "editgame-util.php";
 
-@session_start();
+include_once "session-start.php";
 
 // we have to be logged in to edit a game
 include "login-check.php";
@@ -1521,9 +1521,8 @@ var linkVals = [
          <td align=right><b>Off-Site Reviews:&nbsp;&nbsp;</b></td><td>
             <span class=details><i>Use this section to link
                to full-length reviews on other sites
-               (e.g., <a href="http://sparkynet.com/spag/">SPAG</a>,
-               <a href="http://www.xyzzynews.com/">Xyzzy News</a>,
-               <a href="http://www.brasslantern.org">Brass Lantern</a>...)
+               (e.g., <a href="https://spagmag.org">SPAG</a>,
+               <a href="https://www.rockpapershotgun.com">Rock Paper Shotgun</a>...)
             </i></span>
 
             <?php
@@ -1572,8 +1571,8 @@ var linkVals = [
                           "Interactive Fiction Reviews Organization"
                               => "http://www.ifreviews.org/",
                           "SPAC" => "http://www.caad.es/spac/",
-                          "SPAG" => "http://www.sparkynet.com/spag/",
-                          "Xyzzy News" => "http://www.xyzzynews.com/");
+                          "SPAG" => "https://www.spagmag.org/",
+                          "Xyzzy News" => "https://ifarchive.org/indexes/if-archive/magazines/XYZZYnews/");
                       echo makeComboBox(
                          "extrevSource", 80, "", array_keys($reviewSites),
                          "onComboSelectReviewSite");
@@ -1905,7 +1904,7 @@ for ($i = 0 ; $i < count($reftypes) ; ++$i) {
                <i>Your changes will be attributed to you as
                   "<?php 
                       echo htmlspecialcharx($username);
-                      if (!is_null($userloc))
+                      if ($userloc != "")
                           echo " (" . htmlspecialcharx($userloc) . ")"
                    ?>."
                    <a href="<?php echo switchUserAndReturnHRef() ?>">

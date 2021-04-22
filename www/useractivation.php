@@ -33,46 +33,17 @@ function genNewUserAdminLinks($verbose, $actcode, $salt)
     return "<a href=\"" . get_root_url() . "userconfirm?"
         . "a=$actcode&s=$salt&c=approve\">"
         . ($verbose ? "<b>Approve</b> - " : "")
-        . "Activate account and send email notice</a>"
+        . "Send activation email</a>"
         . "$br<a href=\"" . get_root_url() . "userconfirm?"
-        . "a=$actcode&s=$salt&c=delete\">"
-        . ($verbose ? "<b>Reject</b> - " : "")
-        . "Delete account and send notice by email</a>"
+        . "a=$actcode&s=$salt&c=flush\" "
+        . "onclick='javascript:return confirm(\"Do you really want to delete this user?\");' >"
+        . ($verbose ? "<b>Delete</b> - " : "")
+        . "Delete user completely</a>"
         . "$br<a href=\"" . get_root_url() . "userconfirm?"
-        . "a=$actcode&s=$salt&c=flush\">"
-        . ($verbose ? "<b>Flush</b> - " : "")
-        . "Delete without notice</a>";
-}
-
-function new_user_review_list($db)
-{
-	$result = mysql_query(
-		"select
-  	      substr(n.nonceid, 21) as userid, n.hash, date_format('%Y-%M-%d %H:%i', n.created),
-	      u.name, u.email
-		from
-		  nonces as n
-		  left outer join users as u
-			on u.id = substr(n.nonceid, 21)
-		where
-		  n.nonceid like 'review user profile %'
-		order by
-		  n.created desc
-        limit
-          0, 100", $db);
-
-	$nrows = mysql_num_rows($result);
-
-	if ($nrows == 0) {
-		echo "None";
-	} else {
-		for ($i = 0 ; $i < $nrows ; $i++)
-		{
-			list($uid, $nonce, $date, $uname, $uemail) = mysql_fetch_row($result);
-			$link = "showuser?id=$uid&unlock=$nonce";
-			echo "<a href=\"$link\">$uname</a> &lt;$uemail&gt; $date<br>";
-		}
-	}
+        . "a=$actcode&s=$salt&c=ban\" "
+        . "onclick='javascript:return confirm(\"Do you really want to ban this user?\");' >"
+        . ($verbose ? "<b>Ban</b> - " : "")
+        . "Forbid login; hide reviews, comments, and profile</a>";
 }
 
 ?>

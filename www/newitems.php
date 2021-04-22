@@ -35,6 +35,25 @@ function getNewItems($db, $limit)
     // start with an empty list
     $items = array();
 
+    // query site news
+    $result = mysql_query(
+        "select
+           itemid as sitenewsid, title, ldesc as `desc`,
+           posted as d,
+           date_format(posted, '%M %e, %Y') as fmtdate,
+           (now() < date_add(posted, interval 7 day)) as freshest
+         from
+           sitenews
+         order by
+           d desc
+         $limit", $db);
+    $sitenewscnt = mysql_num_rows($result);
+    for ($i = 0 ; $i < $sitenewscnt ; $i++) {
+        $row = mysql_fetch_array($result, MYSQL_ASSOC);
+        if ($i) $row['freshest'] = 0;
+        $items[] = array('S', $row['d'], $row);
+    }
+
     // query the recent games
     $result = mysql_query(
         "select id, title, author, `desc`, created as d,
@@ -116,7 +135,8 @@ function getNewItems($db, $limit)
                        ifnull(reviews.embargodate, '0000-00-00')),
                        '%M %e, %Y') as fmtdate,
            (games.coverart is not null) as hasart,
-           (users.picture is not null) as haspic
+           (users.picture is not null) as haspic,
+           games.flags
          from
            reviews
            join games
@@ -201,6 +221,12 @@ function getNewItems($db, $limit)
 // sorting callback: sort from newest to oldest
 function sortNewItemsByDate($a, $b)
 {
+    // pin "freshest" items to the top of the list
+    $aFreshest = isset($a[2]['freshest']) ? $a[2]['freshest'] : 0;
+    $bFreshest = isset($b[2]['freshest']) ? $b[2]['freshest'] : 0;
+    $freshest = $bFreshest - $aFreshest;
+    if ($freshest) return $freshest;
+
     // Compare the date fields (element [1]) of the two rows.  These are
     // in the mysql raw date format, which collates like an ascii string,
     // so we can compare with strcmp.  Reverse the sense of the test so
@@ -274,28 +300,55 @@ function queryNewNews(&$items, $db, $limit, $sourceType,
     }
 }
 
-function showNewItems($db, $first, $last, $items)
+function showNewItems($db, $first, $last, $items, $showFlagged = false, $allowHiddenBanner = true)
 {
     // if the caller didn't provide the new item lists, query them
     if (!$items)
         $items = getNewItems($db, $last);
 
     // show them
-    showNewItemList($db, $items, $first, $last);
+    showNewItemList($db, $items, $first, $last, $showFlagged, $allowHiddenBanner);
 
     // indicate whether there's more to come
     return count($items) > $last;
 }
 
-function showNewItemList($db, $items, $first, $last)
+function showNewItemList($db, $items, $first, $last, $showFlagged, $allowHiddenBanner)
 {
     // show the items
     $totcnt = count($items);
+
+    $showHiddenBanner = false;
+    if (!$showFlagged && $allowHiddenBanner) {
+        for ($idx = $first ; $idx <= $last && $idx < $totcnt ; $idx++)
+        {
+            list($pick, $rawDate, $row) = $items[$idx];
+            if ($pick == 'R' && ($row['flags'] & FLAG_SHOULD_HIDE)) {
+                $showHiddenBanner = true;
+                break;
+            }
+        }
+    }
+    
+    if ($showHiddenBanner) {
+        $currentUrl = $_SERVER['REQUEST_URI'];
+        if (strpos($currentUrl, '?') === false) {
+            $currentUrl .= "?";
+        }
+        $showAllLink = htmlspecialchars( $currentUrl, ENT_QUOTES, 'UTF-8' ) . "&showFlagged=1";
+        echo "<p><div class=restricted>Some results were hidden. "
+            . "<a href=\"$showAllLink\">See all results</a></div></p>";
+    }
+
     for ($idx = $first ; $idx <= $last && $idx < $totcnt ; $idx++)
     {
         // get this item
         list($pick, $rawDate, $row) = $items[$idx];
     
+        if (!$showFlagged && $pick == 'R' && ($row['flags'] & FLAG_SHOULD_HIDE)) {
+            continue;
+        }
+
         // display the item according to its type
 		if (ENABLE_IMAGES) {
 			echo "<table border=\"0\" cellpadding=\"0\" "
@@ -318,8 +371,8 @@ function showNewItemList($db, $items, $first, $last)
 						. "&thumbnail=50x50\"></a>";
 				} else if ($r["hasart"]) {
 					echo "<a href=\"viewgame?id={$r['gameid']}\">"
-						. "<img border=0 src=\"viewgame?id={$r['gameid']}"
-						. "&coverart&thumbnail=50x50\"></a>";
+						. coverArtThumbnail($r['gameid'], 50)
+						. "</a>";
 				} else {
 					echo "<a href=\"viewgame?id={$r['gameid']}"
 						. "&review={$r['reviewid']}\">"
@@ -376,6 +429,12 @@ function showNewItemList($db, $items, $first, $last)
 			if (ENABLE_IMAGES)
 				echo "</td>";
         }
+        else if ($pick == 'S')
+        {
+            // it's site news
+            echo "<div class=\"site-news\">IFDB <a href='/news'>site news</a> <span class=notes><i>{$row['fmtdate']}</i></span>"
+                . "<br><div class=indented><b>{$row['title']}</b>: {$row['desc']}</div></div>";
+        }
         else if ($pick == 'L')
         {
             // it's a list
@@ -423,8 +482,8 @@ function showNewItemList($db, $items, $first, $last)
 			if (ENABLE_IMAGES) {
 				if ($g["hasart"]) {
 					echo "<a href=\"viewgame?id={$g['id']}\">"
-						. "<img border=0 src=\"viewgame?id={$g['id']}"
-						. "&coverart&thumbnail=50x50\"></a>";
+						. coverArtThumbnail($g['id'], 50)
+						. "</a>";
 				} else {
 					echo "<a href=\"viewgame?id={$g['id']}\">"
 						. "<img border=0 src=\"game50.gif\"></a>";
@@ -542,8 +601,8 @@ function showNewItemList($db, $items, $first, $last)
 						. "&thumbnail=50x50\"></a>";
 				} else if ($n["hasart"]) {
 					echo "<a href=\"viewgame?id={$n['gameid']}\">"
-						. "<img border=0 src=\"viewgame?id=$gid"
-						. "&coverart&thumbnail=50x50\"></a>";
+						. coverArtThumbnail($gid, 50)
+						. "</a>";
 				} else {
 					echo "<a href=\"newslog?newsid=$nid\">"
 						. "<img border=0 src=\"news50.gif\"></a>";
@@ -634,6 +693,21 @@ function showNewItemsRSS($db, $showcnt)
     $items = getNewItems($db, $showcnt - 1);
     $totcnt = count($items);
 
+    $lastBuildDate = false;
+    for ($idx = 0 ; $idx < $showcnt && $idx < $totcnt ; $idx++)
+    {
+        list($pick, $rawDate, $row) = $items[$idx];
+        if (!$lastBuildDate) {
+            $lastBuildDate = $rawDate;
+        } else if ($rawDate < $lastBuildDate) {
+            $fmtDate = date("D, j M Y H:i:s ", strtotime($lastBuildDate)) . 'UT';
+            echo "<lastBuildDate>$fmtDate</lastBuildDate>\r\n";
+            break;
+        } else {
+            $lastBuildDate = $rawDate;
+        }
+    }
+
     // show the items
     for ($idx = 0 ; $idx < $showcnt && $idx < $totcnt ; $idx++)
     {
@@ -709,13 +783,30 @@ function showNewItemsRSS($db, $showcnt)
             $link = get_root_url() . "viewgame?id={$g['id']}";
             $pubDate = $g['d'];
         }
+        else if ($pick == 'S')
+        {
+            // format the items for RSS
+            // copied and pasted from /news
+            $title = rss_encode("IFDB site news: " . htmlspecialcharx($row['title']));
+            $ldesc = rss_encode(htmlspecialcharx($row['desc']));
+            $pub = date("D, j M Y H:i:s ", strtotime($row['d'])) . 'UT';
+
+            $link = get_root_url() . "news?item=" . $row['sitenewsid'];
+            $link = rss_encode(htmlspecialcharx($link));
+
+            // send the item without escaping links
+            echo "<item>\r\n"
+                . "<title>$title</title>\r\n"
+                . "<description>$ldesc</description>\r\n"
+                . "<link>$link</link>\r\n"
+                . "<pubDate>$pub</pubDate>\r\n"
+                . "<guid>$link</guid>\r\n"
+                . "</item>\r\n";
+            continue;
+        }
 
         // format the item's publication date properly
-        $pubDate = date("D, j M Y H:i:s e", strtotime($pubDate));
-
-        // if this is the latest item, send its date as the <lastBuildDate>
-        if ($idx == 0)
-            echo "<lastBuildDate>$pubDate</lastBuildDate>";
+        $pubDate = date("D, j M Y H:i:s ", strtotime($pubDate)) . 'UT';
 
         // send the item
         echo "<item>\r\n"

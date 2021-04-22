@@ -1,7 +1,7 @@
 <?php
 
 // we have to be logged in to do this
-@session_start();
+include_once "session-start.php";
 include "login-check.php";
 if (!logged_in())
     exit();
@@ -58,6 +58,8 @@ $notes = htmlspecialcharx($notes);
 $flagNames = array('S' => "Spoilers");
 $flagName = $flagNames[$flagType];
 
+if (!$flagName) $errMsg = "Invalid flag type.";
+
 // we can only delete flags on our own reviews
 if ($reviewOwner != $curuser)
 {
@@ -68,7 +70,6 @@ if ($reviewOwner != $curuser)
     pageFooter();
     exit();
 }
-
 
 // check what we're doing
 if ($confirm == 'Y' && !$errMsg) {

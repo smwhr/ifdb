@@ -77,16 +77,18 @@ $fields = array(
     array("Development System", "system", 30, null,
           array("None", "Custom",
                 "ADRIFT",
-                "AdvSys",
-                "AGT",
-                "Alan", "Alan 3",
+                "Adventuron",
                 "ChoiceScript",
-                "Hugo",
+                "ChooseYourStory",
+                "Dialog",
                 "Inform 6", "Inform 7",
+                "Ink",
                 "Quest", "Quest 5",
                 "Ren'Py",
                 "TADS 2", "TADS 3",
+                "Texture",
                 "Twine",
+                "Unity",
                 "ZIL"),
           TypeString),
     array("Language", "language", 20,
@@ -114,7 +116,7 @@ $fields = array(
           game within the series", null, TypeString),
     array("Genre", "genre", 50,
           "We recommend the <a target=\"_blank\"
-            href=\"http://www.wurb.com/if/genre\">Baf's
+            href=\"https://web.archive.org/web/20110514231056/https://www.wurb.com/if/genre\">Baf's
             Guide</a> list, but feel free to combine genres or
             go off-list as needed",
           array("Abuses", "Adaptation", "Children's",
@@ -129,9 +131,7 @@ $fields = array(
           . helpWinLink("help-forgiveness", "Details"),
           array("Merciful", "Polite", "Tough", "Nasty", "Cruel"), TypeString),
     array("<i>Baf's Guide</i> ID", "bafsid", 10,
-          "Integer identifier assigned by
-           <a target=\"_blank\" href=\"http://www.wurb.com/if\">Baf's
-             Guide</a> - "
+          "Integer identifier assigned by Baf's Guide - "
           . helpWinLink("help-bafs", "How do I find this?"),
           null, TypeInt),
     array("Web site", "website", 60,

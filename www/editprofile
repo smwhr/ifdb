@@ -4,7 +4,7 @@ include "pagetpl.php";
 include_once "captcha.php";
 include_once "akismet.php";
 
-@session_start();
+include_once "session-start.php";
 include "login-check.php";
 include_once "util.php";
 if (provisionally_logged_in())
@@ -154,7 +154,7 @@ function init()
            picture is not null as haspic, picture as pic,
            acctstatus, activationcode,
            concat(defaultos, '.', ifnull(defaultosvsn,'')) as defaultos,
-           noexedownloads, publiclists, gender, emailflags, mirrorid,
+           noexedownloads, publiclists, gender, emailflags, 
            offsite_display, accessibility
         from
            users
@@ -191,7 +191,6 @@ function init()
     $emailflags = mysql_result($result, 0, "emailflags");
     $oldEmailcaptcha = (($emailflags & EMAIL_CAPTCHA) ? 1 : 0);
     $oldEmailcloaked = (($emailflags & EMAIL_CLOAKED) ? 1 : 0);
-    $oldMirror = mysql_result($result, 0, "mirrorid");
     $oldOffsite = mysql_result($result, 0, "offsite_display");
     $oldAccessibility = mysql_result($result, 0, "accessibility");
 
@@ -453,18 +452,6 @@ function saveChanges()
             if ($akIsSpam)
                 $newprostat = "R";
 
-            // generate an admin nonce to update the record
-            $task = "review user profile $usernum";
-            $nonce = create_nonce($db, $task);
-            if (!$nonce) {
-                $errFlagged = "An error occurred updating the database. "
-                              . "You might want to wait a few moments "
-                              . "and try again, or <a href=\"contact\">"
-                              . "contact us</a> if the problem persists. "
-                              . "(Error code EPN1688)";
-                return false;
-            }
-
             // profile status code to name map
             $proStatMap = array(
                 "T" => "Trusted",
@@ -474,10 +461,7 @@ function saveChanges()
             // Send email to the IFDB admin on any profile change.  Even
             // if the profile doesn't require review, we want to take a
             // look anyway just to be sure.
-            $adminUrl = get_root_url() . "userconfirm"
-                        . "?nonce=$nonce"
-                        . "&userid=$usernum"
-                        . "&reviewProfile=";
+            $adminUrl = get_root_url() . "adminops?user=$usernum";
     
             $msg = "IFDB profile change notification\r\n<p>"
                    . ($newprostat == "R" ?
@@ -485,8 +469,8 @@ function saveChanges()
                       "(No review required - advisory only)")
                    . "<p>Profile page: "
                    . "<a href=\"". get_root_url() . "showuser"
-                   . "?id=$usernum&unlock=$nonce\">"
-                   .     get_root_url() . "showuser?id=$usernum</a>"
+                   . "?id=$usernum&unlock=1\">"
+                   .     get_root_url() . "showuser?id=$usernum&unlock=1</a>"
                    . "<br>User email: " . htmlspecialcharx($email)
                    . "<br>Screen name: " . htmlspecialcharx($dname)
                    . "<br>Location: " . htmlspecialcharx($loc)
@@ -495,20 +479,8 @@ function saveChanges()
                    . "<br>Profile status: "
                    .    "$newprostat ({$proStatMap[$newprostat]})"
                    . "<p>Profile text: " . htmlspecialcharx($profile)
-                   . "<p><a href=\"{$adminUrl}A\">"
-                   . ($newprostat == "T" ? "Set user to \"normal\"</a>"
-                      . " (remove \"trusted\" designation)" :
-                      "Approve the profile</a>")
-                   . "<br><a href=\"{$adminUrl}T\">Set user to \"trusted\"</a>"
-                   .   " (automatically approves future profile changes)"
-                   . "<br><a href=\"{$adminUrl}B\">Ban the user</a>"
-
-                   . "<br><a href=\"http://localhost/mjrnet/sfs-report.php"
-                   .     "?email=" . urlencode($email)
-                   .     "&ip=" . $_SERVER['REMOTE_ADDR']
-                   .     "&username=" . urlencode($dname)
-                   .     "\">Report this user to StopForumSpam</a>"
-
+                   . "<p><a href=\"{$adminUrl}\">"
+                   . "Manage user profile status</a>"
                    . "<br><br>";
 
             $hdrs = "From: IFDB <noreply@ifdb.org>\r\n"
@@ -598,7 +570,7 @@ complete the re-activation process.</b>
                    defaultos = $qdefos, defaultosvsn = $qdefosvsn,
                    noexedownloads = '$qNoExes', publiclists = '$qPublicLists',
                    gender = '$qGender', emailflags = '$emailflags',
-                   mirrorid = '$qmirror', offsite_display = '$qOffsite',
+                   offsite_display = '$qOffsite',
                    accessibility = '$qAccessibility'
                    $setPic
                 where id = '$usernum'", $db) == false) {
@@ -646,14 +618,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST'
 }
 
 // start the page
-pageHeader("Update Profile", "editprofile.email", false,
+pageHeader("Update Settings", "editprofile.email", false,
            "<script src='xmlreq.js'></script");
 imageUploadScripts();
 captchaSupportScripts($captchaKey);
 
 ?>
 
-<h1>Update Profile</h1>
+<h1>Update Settings</h1>
 
 <?php
     if ($errFlagged)
@@ -666,7 +638,7 @@ captchaSupportScripts($captchaKey);
 
     if ($changed)
         echo "<p><span class=success><b>
-           Your profile has been updated.</b></span>";
+           Your settings have been updated.</b></span>";
 
     if ($emailChanged && !$errFlagged)
         echo "<p><font color=red><b>Your email address has been updated,
@@ -963,39 +935,7 @@ will customize its advice based on the settings below.</span>
 <p>
 
    <table class=dataform border=0 cellspacing=0 cellpadding=0>
-      <tr valign=top>
-         <td align=right>
-            <nobr>IF Archive Mirror:</nobr>
-         </td>
-         <td>
-            <select name="mirror" id="mirror">
-            <?php
-$result = mysql_query(
-    "select mirrorid, name from mirrors
-     order by if(mirrorid=1, 1, if(mirrorid=100, 2, 3)), name", $db);
-for ($i = 0 ; $i < mysql_num_rows($result) ; $i++) {
-    list($mid, $mname) = mysql_fetch_row($result);
-    $mname = htmlspecialcharx($mname);
-    $sel = ($mid == $mirror ? " selected" : "");
-    echo "<option value=\"$mid\"$sel>$mname</option>";
-}
-            ?>
-            </select>
-            <br>
-            <span class=microhelp>
-               The site you select here will be used for the IF Archive file
-               links you see on IFDB.
-               (<?php
-                  echo helpWinLink("help-mirrors", "What's a mirror?");
-//<a href="needjs"
-//               onclick="javascript:helpWin('help-mirrors');return false;"
-//               >What's a mirror?</a>
-               ?>)
-            </span>
-         </td>
-      </tr>
 
-      <tr valign=top><td>&nbsp;<br></td></tr>
       <tr valign=top>
          <td align=right>
             <nobr>Primary Operating System:</nobr>

@@ -68,10 +68,10 @@ function getReviewQuery($db, $where)
            moddate, date_format(moddate, '%M %e, %Y') as moddatefmt,
            users.id as userid, users.name as username,
            users.location as location, special,
-           sum(reviewvotes.vote = 'Y') as helpful,
-           sum(reviewvotes.vote = 'N') as unhelpful,
-           ifnull(sum(reviewvotes.vote = 'Y'), 0)
-              - ifnull(sum(reviewvotes.vote = 'N'), 0)
+           sum(reviewvotes.vote = 'Y' and ifnull(rvu.sandbox, 0) in $sandbox) as helpful,
+           sum(reviewvotes.vote = 'N' and ifnull(rvu.sandbox, 0) in $sandbox) as unhelpful,
+           ifnull(sum(reviewvotes.vote = 'Y' and ifnull(rvu.sandbox, 0) in $sandbox), 0)
+              - ifnull(sum(reviewvotes.vote = 'N' and ifnull(rvu.sandbox, 0) in $sandbox), 0)
               as netHelpful,
            group_concat(distinct reviewflags.flagtype separator '') as flags,
            reviews.gameid as gameid,
@@ -80,6 +80,7 @@ function getReviewQuery($db, $where)
            reviews
            left outer join reviewvotes on reviewvotes.reviewid = reviews.id
            left outer join users on users.id = reviews.userid
+           left outer join users rvu on rvu.id = reviewvotes.userid
            $joinUserFilter
            left outer join reviewflags on reviewflags.reviewid = reviews.id
          where
@@ -145,12 +146,27 @@ function displayReviewVote(reviewID, vote)
 {
     if (vote != null)
     {
-        document.getElementById("voteStat_" + reviewID).innerHTML =
-            "<br>(You previously voted "
-            + (vote == 'Y' ? "Yes" : "No")
-            + ")";
-    }
+	    if (vote == "R")
+	    {
+	    	document.getElementById("voteStat_" + reviewID).innerHTML = "";
+	    	document.getElementById("voteRemove_" + reviewID).innerHTML = "";
+	    } 
+	    else {	    
+        	document.getElementById("voteStat_" + reviewID).innerHTML =
+       	  	   "<br>(You voted "
+	   	  	   + (vote == 'Y' ? "Yes" : "No")
+	   	  	   + ")";
+	    	document.getElementById("voteRemove_" + reviewID).innerHTML = "<a href=\"needjs\" "
+            + "onclick=\"javascript:sendReviewVote('" + reviewID + "', 'R');"
+            + "return false;\">Remove vote</a> &nbsp; "
+        }
+    } 
+	else {
+	    document.getElementById("voteRemove_" + reviewID).innerHTML = "";				
+	}
 }
+
+
 var curPopupMenu = null;
 function popVoteMenu(reviewID)
 {
@@ -215,6 +231,7 @@ function popupMenuKey(e, id)
 define("SHOWREVIEW_NOVOTECTLS", 0x0001);
 define("SHOWREVIEW_NOCOMMENTCTLS", 0x0002);
 define("SHOWREVIEW_COMMENTCTLSADDONLY", 0x0004);
+define("SHOWREVIEW_ADMINREVIEWVOTESLINK", 0x0008);
 
 function showReview($db, $gameid, $rec, $specialNames, $optionFlags = 0)
 {
@@ -224,6 +241,7 @@ function showReview($db, $gameid, $rec, $specialNames, $optionFlags = 0)
     $showVoteCtls = !($optionFlags & SHOWREVIEW_NOVOTECTLS);
     $showCommentCtls = !($optionFlags & SHOWREVIEW_NOCOMMENTCTLS);
     $addCommentOnly = ($optionFlags & SHOWREVIEW_COMMENTCTLSADDONLY);
+    $adminReviewVotes = ($optionFlags & SHOWREVIEW_ADMINREVIEWVOTESLINK);
     
     // get the current user, if we're logged in
     checkPersistentLogin();
@@ -303,7 +321,7 @@ function showReview($db, $gameid, $rec, $specialNames, $optionFlags = 0)
         if ($helpful != 0 || $unhelpful != 0) {
             echo "<p><div class=smallhead><span class=details>$helpful of
                   $totalvotes people found the following review helpful:
-                 </span></div>";
+                 ".($adminReviewVotes ? "<a href=\"/adminops?reviewvotes&reviewid=$reviewid\">Admin: Who?</a>" : "")."</span></div>";
         }
     }
 
@@ -371,7 +389,7 @@ function showReview($db, $gameid, $rec, $specialNames, $optionFlags = 0)
     }
 
     // show the review body
-    echo "$review<br>";
+    echo "<p>$review</p>";
 
     // set up the comment controls, if applicable
     $commentCtls = $barCommentCtl = "";
@@ -422,7 +440,7 @@ function showReview($db, $gameid, $rec, $specialNames, $optionFlags = 0)
 
         echo "<div class=smallfoot><span class=details>
                <i>You wrote this review -
-               <a href=\"review?id=$gameid\">Revise it</a></i>
+               <a href=\"review?id=$gameid&userid=$userid\">Revise it</a></i>
                $barCommentCtls</span></div>";
 
     } else if ($specialCode == 'external') {
@@ -445,17 +463,25 @@ function showReview($db, $gameid, $rec, $specialNames, $optionFlags = 0)
 
         echo "<div class=smallfoot><span class=details>"
             . "Was this review helpful to you? &nbsp; "
-            . "<a href=\"needjs\""
+            . "<a href=\"needjs\" "
             . "onclick=\"javascript:sendReviewVote('$reviewid', 'Y');"
             . "return false;\">Yes</a> &nbsp; "
             . "<a href=\"needjs\""
             . "onclick=\"javascript:sendReviewVote('$reviewid', 'N');"
             . "return false;\">No</a> &nbsp; "
+            . "<span id=\"voteRemove_$reviewid\"><a href=\"needjs\" "
+            . "onclick=\"javascript:sendReviewVote('$reviewid', 'R');"
+            . "return false;\">Remove vote</a> &nbsp; </span>";
 
-            . "<div style=\"display:inline;position:relative;\">"
+			if (check_admin_privileges($db, $curuser)) {
+				echo "<a href=\"review?id=$gameid&userid=$userid\">Edit</a>&nbsp; ";
+			}
+			
+			
+		echo  "<div style=\"display:inline;position:relative;\">"
             . "<a href=\"#\" id=\"voteMenuLink_$reviewid\" "
             . "onclick=\"javascript:popVoteMenu('$reviewid');"
-            . "return false;\">More Options<img src=\"/blank.gif\""
+            . "return false;\">More Options<img src=\"/blank.gif\" "
             . "class=\"popup-menu-arrow\"></a>"
 
             . "<div id=\"voteMenu_$reviewid\" style=\"display: none;"
@@ -482,6 +508,13 @@ function showReview($db, $gameid, $rec, $specialNames, $optionFlags = 0)
             . "<tr><td><a href=\"reviewflag?review=$reviewid&type=spoilers\" "
             . "title=\"Warn other users that this review "
             . "contains unmarked spoilers\"><nobr>Flag spoilers</nobr></a>"
+            . "</tr></td>"
+            . "<tr><td><a href=\"reviewflag?review=$reviewid&type=inappropriate\" "
+            . "title=\"Notify moderators that this review violates "
+            . "the community guidelines\"><nobr>Flag as inappropriate</nobr></a>"
+            . "</tr></td>"
+            . "<tr><td><a href=\"viewgame?id=$gameid&review=$reviewid\" "
+            . "title=\"Direct link to this review\"><nobr>Direct link</nobr></a>"
             . "</tr></td>"
             . "<tr style=\"height:1ex;\"><td></td></tr>"
             . "<tr><td><a href=\"userfilter?list\">"

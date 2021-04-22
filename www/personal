@@ -1,6 +1,6 @@
 <?php
 
-@session_start();
+include_once "session-start.php";
 include "login-check.php";
 if (!logged_in())
     exit();
@@ -20,7 +20,7 @@ $result = mysql_query(
     "select name, caughtupdate from users where id='$quid'", $db);
 list($username, $caughtUpDate) = mysql_fetch_row($result);
 
-pageHeader("$username's IFDB Page");
+pageHeader("$username's IFDB Activity");
 echo "<div style=\"width: 100%;\">
     <table width=\"100%\" cellpadding=0 cellspacing=0>
     <tr valign=top><td style=\"padding-right: 1em;\">";
@@ -147,7 +147,7 @@ list($comments, $commentCnt) = queryComments(
 if ($commentCnt == 0) {
     echo "<span class=notes><i>You have no comments yet (either "
         . "comments that you posted, or comments by others on your "
-        . "reviews).</span><p>"
+        . "reviews).</i></span><p>"
         . helpWinLink("help-discussions", "Explain this") . "<p>";
 } else {
 
@@ -479,7 +479,7 @@ if (count($games) == 0) {
        listings in the IFDB catalog.</i></span>";
 } else {
     foreach ($games as $g) {
-        echo "<a href=\"viewgame?id={$g['id']}\"<i>"
+        echo "<a href=\"viewgame?id={$g['id']}\"><i>"
             . htmlspecialcharx($g['title']) . "</i></a>, by "
             . htmlspecialcharx($g['author'])
             . "<span class=details> - "

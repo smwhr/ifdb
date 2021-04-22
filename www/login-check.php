@@ -43,8 +43,13 @@ function provisionally_logged_in()
 function logged_in($smallPage = false)
 {
     // if we have the session flag indicating we're logged in, we're good
-    if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] == true)
+    if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] == true) {
+        if (check_banned($_SESSION['logged_in_as'])) {
+            redirect_to_login_page();
+            return false;
+        }
         return true;
+    }
 
     // look for a persistent session
     $userid = checkPersistentLogin();
@@ -212,9 +217,13 @@ function setLoginCookie($db, $usernum, $ip)
          values ('$cookie', '$usernum', now())", $db);
 
     // set the cookie in the browser
-    setcookie("IFDBSessionID", $cookie, time() + 60*60*24*365*10, "/",
-              isLocalDev() ? "" : ".tads.org",
-              false, true);
+    setcookie("IFDBSessionID", $cookie, [
+        "expires" => time() + 60*60*24*365*10,
+        "path" => "/",
+        "secure" => !isLocalDev(),
+        "httponly" => true,
+        "samesite" => "lax",
+    ]);
 }
 
 ?>

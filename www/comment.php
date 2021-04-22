@@ -1,7 +1,7 @@
 <?php
 
 // we have to be logged in to do this
-@session_start();
+include_once "session-start.php";
 include "login-check.php";
 include_once "captcha.php";
 include_once "akismet.php";
@@ -152,7 +152,7 @@ if ($commentID || $deleteID) {
         if ($deleteID) {
             // deleting - must be the author of the comment or source object
             if ($curuser != $author
-                && (!$curuser || $curuser != $refOwner)) {
+                && (!$curuser || $curuser != $refOwner) && (!check_admin_privileges($db, $curuser))) {
                 $errMsg = "This comment was entered by another user. You "
                           . "can only delete your own comments (or comments "
                           . "posted to $ownSrc).";
@@ -160,7 +160,7 @@ if ($commentID || $deleteID) {
             }
         } else {
             // editing - must be the author of the comment
-            if (!$deleteID && $author != $curuser) {
+            if ((!$deleteID && $author != $curuser) && (!check_admin_privileges($db, $curuser))) {
                 $errMsg = "This comment was entered by another user. You "
                           . "can only edit your own comments.";
                 $errFatal = true;
@@ -380,27 +380,14 @@ if ($errMsg) {
 
         // notify ifdbadmin if it looks like spam
         if ($ak->isCommentSpam()
-            || preg_match("/(http:|www\.)/i", $commentText))
+            || preg_match("/(https?:|www\.)/i", $commentText))
         {
             $spamErr = "An error occurred updating the database - changes "
                        . "were not saved. You might try again in a few "
                        . "moments, or <a href=\"contact\">contact us</a> "
                        . "if the problem persists. (Error code ";
 
-            // generate a "ban user" link
-            if (!$errMsg)
-            {
-                $task = "review user profile $curuser";
-                $nonce = create_nonce($db, $task);
-                if (!$nonce)
-                    $errMsg = "$spamErr RVN1927)";
-
-                // generate the admin url ase
-                $adminUrl = get_root_url() . "userconfirm"
-                            . "?nonce=$nonce"
-                            . "&userid=$curuser"
-                            . "&reviewProfile=";
-            }
+            $adminUrl = get_root_url() . "adminops?user=$curuser";
 
             // send email
             if (!$errMsg && !send_mail(
@@ -420,13 +407,7 @@ if ($errMsg) {
                 . "<br>Message: "
                 . htmlspecialchars($commentText) . "<br><br>"
 
-                . "<a href=\"{$adminUrl}B\">Ban this user</a>"
-
-                . "<br><a href=\"http://localhost/mjrnet/sfs-report.php"
-                .     "?email=" . urlencode($userAccountEmail)
-                .     "&username=" . urlencode($userAccountName)
-                .     "&ip=" . $_SERVER['REMOTE_ADDR']
-                .     "\">Report this user to StopForumSpam</a>"
+                . "<a href=\"{$adminUrl}\">Manage this user</a>"
                 
                 . "<br><br>",
                 
@@ -527,6 +508,10 @@ if (!$submit || $errMsg || !$captchaOK) {
 <b>Guidelines:</b>
 <ul class=doublespace>
 
+   <li>Follow our <?php
+echo helpWinLink("code-of-conduct", "code of conduct")
+   ?>.</li>
+   
    <li>Be courteous.
 
    <li>If you have criticisms, try to make them constructive.

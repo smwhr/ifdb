@@ -1,8 +1,6 @@
 # IFDB
 
-This is the source code for IFDB, the Interactive Fiction Database.
-
-As of Jan 22, 2021, the code in this repository hasn't been deployed yet. We're going to work together to make this code ready to deploy at a new domain name.
+This is the source code for [IFDB](https://ifdb.org), the Interactive Fiction Database.
 
 # Preparing Your Own Development Environment
 
@@ -17,6 +15,20 @@ The IFDB web app is a LAMP app (Linux, Apache, MySQL, PHP). The development envi
 4. Go to `http://localhost:8080` on your machine. You should see IFDB running. You can login as `ifdbadmin` at `ifdb.org` with the password `secret` to sign in as an administrator. The administrator has access to the "system maintenance panel" at `http://localhost:8080/adminops`
 
 5. Optionally, you can query the database using phpMyAdmin at `http://localhost:8081` or run `docker exec -it ifdb_db_1 mysql -psecret ifdb` to use the MySQL command-line interface.
+
+# Database Changes
+
+Changes to the web site should update immediately but changes to the database require a few more steps.
+
+Make all database schema and content changes in `./sql/patch-schema.sql`. After saving your changes, type the following three commands while in this directory:
+
+```
+docker-compose down
+./prepare_dev_environment.sh
+docker-compose up
+```
+
+All of your database changes should now be available.
 
 ## Known Issues with the Development Environment
 
